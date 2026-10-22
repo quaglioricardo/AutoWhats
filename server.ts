@@ -19,6 +19,15 @@ import {
 import { productsFromCsv, productsFromPostgres } from "./server/importers.js";
 import { chat, startConversation } from "./server/ai.js";
 
+if (process.env.NODE_ENV === "production") {
+  const missing = ["DATABASE_URL", "ANTHROPIC_API_KEY"].filter((k) => !process.env[k]);
+  if (missing.length) {
+    console.error(`Variáveis de ambiente faltando: ${missing.join(", ")}. Configure-as e reinicie.`);
+    process.exit(1);
+  }
+  if (!process.env.APP_PASSWORD) console.warn("Aviso: APP_PASSWORD vazio, o painel está aberto a qualquer pessoa.");
+}
+
 const app = express();
 app.use(express.json({ limit: "5mb" }));
 
