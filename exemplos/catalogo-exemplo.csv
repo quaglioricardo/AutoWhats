@@ -1,0 +1,8 @@
+sku,nome,descricao,categoria,preco,tamanho,estoque
+BON-STRAP,Boné Strapback,Boné aba curva com regulagem traseira,Acessórios,"59,90",Único,10
+CAM-POLO,Camisa Polo,Polo em piquet com bordado no peito,Camisetas,"129,90",P,4
+CAM-POLO,Camisa Polo,Polo em piquet com bordado no peito,Camisetas,"129,90",M,0
+CAM-POLO,Camisa Polo,Polo em piquet com bordado no peito,Camisetas,"129,90",G,6
+SAN-SLIDE,Chinelo Slide,Slide em EVA com tira acolchoada,Calçados,"79,90",37,3
+SAN-SLIDE,Chinelo Slide,Slide em EVA com tira acolchoada,Calçados,"79,90",39,5
+SAN-SLIDE,Chinelo Slide,Slide em EVA com tira acolchoada,Calçados,"79,90",41,0

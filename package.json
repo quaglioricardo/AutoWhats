@@ -1,0 +1,35 @@
+{
+  "name": "autowhats",
+  "version": "1.0.0",
+  "description": "Atendente virtual de WhatsApp com IA para varejo",
+  "scripts": {
+    "dev": "concurrently -n api,web -c green,cyan \"tsx watch server.ts\" \"vite\"",
+    "build": "vite build",
+    "start": "NODE_ENV=production tsx server.ts",
+    "typecheck": "tsc",
+    "db:seed": "tsx server/seed-cli.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.1.0",
+    "csv-parse": "^7.0.3",
+    "dotenv": "^18.0.8",
+    "express": "^5.3.0",
+    "pg": "^8.23.1",
+    "tsx": "^4.23.15"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.6.5",
+    "@types/pg": "^8.23.1",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "concurrently": "^10.0.6",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.5"
+  },
+  "private": true,
+  "type": "module"
+}
