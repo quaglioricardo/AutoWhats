@@ -17,7 +17,7 @@ import {
   ValidationError,
 } from "./server/catalog.js";
 import { productsFromCsv, productsFromPostgres } from "./server/importers.js";
-import { chat, startConversation } from "./server/ai.js";
+import { chat, diagnoseAi, startConversation } from "./server/ai.js";
 
 if (process.env.NODE_ENV === "production") {
   const missing = ["DATABASE_URL", "ANTHROPIC_API_KEY"].filter((k) => !process.env[k]);
@@ -52,6 +52,15 @@ const route = (fn: Handler) => (req: Request, res: Response, next: NextFunction)
 app.get("/api/health", route(async (_req, res) => {
   await pool.query("SELECT 1");
   res.json({ ok: true });
+}));
+
+app.get("/api/diagnostico", route(async (_req, res) => {
+  const key = process.env.ANTHROPIC_API_KEY ?? "";
+  res.json({
+    chave: key ? `${key.slice(0, 10)}... (${key.length} caracteres)` : "NÃO CONFIGURADA",
+    modelo: process.env.AI_MODEL ?? "claude-opus-5-5",
+    ia: await diagnoseAi(),
+  });
 }));
 
 // --- Catálogo ---------------------------------------------------------------

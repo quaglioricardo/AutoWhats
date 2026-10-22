@@ -288,3 +288,23 @@ export async function chat(conversationId: string, text: string): Promise<string
   await logEvent("message_out", { conversationId, count: replies.length });
   return replies;
 }
+
+/** Sends a tiny request with the same settings as the chat, to check the key and model. */
+export async function diagnoseAi() {
+  const started = Date.now();
+  try {
+    const response = await client.beta.messages.create({
+      model: MODEL,
+      max_tokens: 64,
+      output_config: { effort: "low" },
+      betas: ["server-side-fallback-2026-07-01"],
+      fallbacks: "default",
+      messages: [{ role: "user", content: "Responda apenas: ok" }],
+    });
+    const text = response.content.flatMap((b) => (b.type === "text" ? [b.text] : [])).join(" ");
+    return { ok: true, model: response.model, stop_reason: response.stop_reason, text, ms: Date.now() - started };
+  } catch (err) {
+    const e = err as { status?: number; message?: string };
+    return { ok: false, status: e.status ?? null, error: e.message ?? String(err), ms: Date.now() - started };
+  }
+}
