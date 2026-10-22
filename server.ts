@@ -28,6 +28,9 @@ if (process.env.NODE_ENV === "production") {
   if (!process.env.APP_PASSWORD) console.warn("Aviso: APP_PASSWORD vazio, o painel está aberto a qualquer pessoa.");
 }
 
+process.on("unhandledRejection", (err) => console.error("Erro não tratado:", err));
+process.on("uncaughtException", (err) => console.error("Exceção não tratada:", err));
+
 const app = express();
 app.use(express.json({ limit: "5mb" }));
 
@@ -113,7 +116,11 @@ app.post("/api/conversations/:id/messages", route(async (req, res) => {
   const text = String(req.body?.text ?? "").trim();
   if (!text) return res.status(400).json({ error: "Mensagem vazia." });
   if (text.length > 2000) return res.status(400).json({ error: "Mensagem muito longa." });
-  res.json({ replies: await chat(String(req.params.id), text) });
+  const started = Date.now();
+  console.log(`Chat: mensagem recebida (${text.length} caracteres)`);
+  const replies = await chat(String(req.params.id), text);
+  console.log(`Chat: ${replies.length} resposta(s) em ${Date.now() - started} ms`);
+  res.json({ replies });
 }));
 
 // --- Métricas ----------------------------------------------------------------
