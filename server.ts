@@ -143,12 +143,13 @@ app.get("/api/metrics", route(async (_req, res) => {
 // --- Erros -------------------------------------------------------------------
 app.use("/api", (err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   if (err instanceof ValidationError) return res.status(400).json({ error: err.message });
+  if (err instanceof Anthropic.APIError) console.error(`Erro da API Anthropic (${err.status ?? "rede"}):`, err.message);
   if (err instanceof Anthropic.AuthenticationError)
     return res.status(502).json({ error: "Chave da API da Anthropic inválida. Confira o ANTHROPIC_API_KEY no .env." });
   if (err instanceof Anthropic.RateLimitError)
     return res.status(503).json({ error: "Muitas mensagens ao mesmo tempo. Tente de novo em alguns segundos." });
   if (err instanceof Anthropic.APIError)
-    return res.status(502).json({ error: `Falha na IA (${err.status ?? "rede"}). Tente novamente.` });
+    return res.status(502).json({ error: `Falha na IA (${err.status ?? "rede"}): ${err.message}` });
   console.error(err);
   res.status(500).json({ error: "Erro interno do servidor." });
 });
