@@ -29,7 +29,10 @@ if (process.env.NODE_ENV === "production") {
 }
 
 process.on("unhandledRejection", (err) => console.error("Erro não tratado:", err));
-process.on("uncaughtException", (err) => console.error("Exceção não tratada:", err));
+process.on("uncaughtException", (err) => {
+  console.error("Exceção não tratada:", err);
+  process.exit(1);
+});
 
 const app = express();
 app.use(express.json({ limit: "5mb" }));
