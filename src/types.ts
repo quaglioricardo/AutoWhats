@@ -37,6 +37,7 @@ export interface Metrics {
   orders: number;
   revenue: number;
   conversations: number;
+  whatsappConversations: number;
   topStockOuts: { produto: string; tamanho: string | null; vezes: number }[];
   recentOrders: {
     id: number;

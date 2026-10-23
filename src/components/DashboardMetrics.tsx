@@ -52,7 +52,7 @@ export default function DashboardMetrics({ settings, onSettingsSaved, activity }
         <div className="stats">
           <Stat label="Mensagens processadas" value={metrics?.messagesIn} sub={`${metrics?.messagesOut ?? 0} respostas enviadas`} />
           <Stat label="Checagens de falta de estoque" value={metrics?.stockOutChecks} sub="produto ou tamanho esgotado" />
-          <Stat label="Pedidos simulados" value={metrics?.orders} sub={`${conversion.toFixed(0)}% das ${metrics?.conversations ?? 0} conversas`} />
+          <Stat label="Pedidos simulados" value={metrics?.orders} sub={`${conversion.toFixed(0)}% das ${metrics?.conversations ?? 0} conversas (${metrics?.whatsappConversations ?? 0} no WhatsApp)`} />
           <Stat label="Faturamento estimado" value={metrics ? brl(metrics.revenue) : undefined} sub="soma dos pedidos simulados" />
         </div>
 

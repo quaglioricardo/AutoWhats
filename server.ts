@@ -18,6 +18,7 @@ import {
 } from "./server/catalog.js";
 import { productsFromCsv, productsFromPostgres } from "./server/importers.js";
 import { chat, diagnoseAi, startConversation } from "./server/ai.js";
+import { processWebhook, validWebhookToken, whatsappEnabled } from "./server/whatsapp.js";
 
 if (process.env.NODE_ENV === "production") {
   const missing = ["DATABASE_URL", "ANTHROPIC_API_KEY"].filter((k) => !process.env[k]);
@@ -36,6 +37,19 @@ process.on("uncaughtException", (err) => {
 
 const app = express();
 app.use(express.json({ limit: "5mb" }));
+
+// --- WhatsApp (Evolution API) ------------------------------------------------
+// Registered before the password check: Evolution calls this URL without the panel login,
+// so it is protected by the secret token in the URL instead.
+app.post("/webhook/evolution", (req, res) => {
+  if (!validWebhookToken(req.query.token)) {
+    console.warn("WhatsApp: webhook com token inválido recusado.");
+    return res.sendStatus(401);
+  }
+  res.sendStatus(200);
+  if (whatsappEnabled()) processWebhook(req.body);
+  else if (req.body?.event) console.warn("WhatsApp: evento recebido, mas EVOLUTION_API_URL/EVOLUTION_API_KEY/EVOLUTION_INSTANCE não estão configurados.");
+});
 
 // The panel controls the catalog and spends API credits, so protect it when published.
 const password = process.env.APP_PASSWORD;
@@ -63,6 +77,13 @@ app.get("/api/diagnostico", route(async (_req, res) => {
     chave: key ? `${key.slice(0, 10)}... (${key.length} caracteres)` : "NÃO CONFIGURADA",
     modelo: process.env.AI_MODEL ?? "claude-opus-5-5",
     ia: await diagnoseAi(),
+    whatsapp: {
+      configurado: whatsappEnabled(),
+      evolution_url: process.env.EVOLUTION_API_URL ?? null,
+      instancia: process.env.EVOLUTION_INSTANCE ?? null,
+      versao: process.env.EVOLUTION_API_VERSION ?? "v2",
+      token_do_webhook: Boolean(process.env.EVOLUTION_WEBHOOK_TOKEN),
+    },
   });
 }));
 
@@ -146,7 +167,8 @@ app.get("/api/metrics", route(async (_req, res) => {
       FROM events`),
     pool.query(`
       SELECT count(*)::int AS "orders", COALESCE(sum(total), 0)::float AS "revenue",
-             (SELECT count(*)::int FROM conversations) AS "conversations"
+             (SELECT count(*)::int FROM conversations) AS "conversations",
+             (SELECT count(*)::int FROM conversations WHERE channel = 'whatsapp') AS "whatsappConversations"
       FROM orders`),
     pool.query(`
       SELECT payload->>'produto' AS produto, NULLIF(payload->>'tamanho', '') AS tamanho, count(*)::int AS vezes

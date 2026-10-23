@@ -69,5 +69,17 @@ export async function migrate() {
       created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
     );
     CREATE INDEX IF NOT EXISTS events_type_idx ON events(type);
+
+    -- Canal da conversa: 'simulador' (painel) ou 'whatsapp' (Cloud API da Meta).
+    ALTER TABLE conversations ADD COLUMN IF NOT EXISTS channel TEXT NOT NULL DEFAULT 'simulador';
+    ALTER TABLE conversations ADD COLUMN IF NOT EXISTS whatsapp_id TEXT;
+    CREATE INDEX IF NOT EXISTS conversations_whatsapp_idx ON conversations(whatsapp_id) WHERE whatsapp_id IS NOT NULL;
+
+    -- Mensagens já recebidas do WhatsApp, para não responder duas vezes a reenvios da Meta.
+    CREATE TABLE IF NOT EXISTS whatsapp_messages (
+      id           TEXT PRIMARY KEY,
+      wa_id        TEXT NOT NULL,
+      received_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
   `);
 }

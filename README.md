@@ -2,7 +2,7 @@
 
 Atendente virtual de WhatsApp com IA para varejo. A **Isis** responde clientes consultando o catálogo da loja em tempo real: estoque por tamanho, preços, sugestões quando algo está esgotado e fechamento de pedido com entrega ou retirada.
 
-Esta versão roda em um **simulador de WhatsApp Web**. A ligação com o WhatsApp de verdade (API oficial da Meta) é uma etapa futura.
+Ela roda no **simulador de WhatsApp Web** do painel e também no **WhatsApp de verdade**, pela Evolution API (veja "Ligar no WhatsApp real").
 
 ## O que tem aqui
 
@@ -99,6 +99,48 @@ Teste: abra https://autowhats.automacaonow.com.br, entre com usuário `admin` e 
 ### Atualizar depois
 Com GitHub, cada push pode fazer o deploy automático (ative em Deployments). Com upload, envie o novo zip e clique em Deploy.
 
+## Ligar no WhatsApp real (Evolution API)
+
+O mesmo motor da Isis atende clientes no WhatsApp de verdade por uma instância da [Evolution API](https://doc.evolution-api.com). A instância envia cada mensagem recebida para o Autowhats, que responde pela própria Evolution. O simulador continua funcionando no painel.
+
+> Cada instância manda as mensagens para **um** webhook. Use uma instância (e um número) só para a Isis, para não tirar as mensagens de outro bot.
+
+### 1. Variáveis no EasyPanel
+No serviço do app → **Ambiente**, acrescente e depois clique em **Implantar**:
+```
+EVOLUTION_API_URL=https://sua-evolution.com.br      # sem barra no final
+EVOLUTION_API_KEY=<API key global da Evolution ou a da instância>
+EVOLUTION_INSTANCE=<nome exato da instância>
+EVOLUTION_API_VERSION=v2                             # ou v1, se a sua for a versão antiga
+EVOLUTION_WEBHOOK_TOKEN=<uma senha que você inventa, ex.: isis-2026-x7k>
+```
+Se a Evolution roda no mesmo EasyPanel, a URL interna (ex.: `http://evolution_api:8080`) também funciona e é mais rápida.
+
+### 2. Webhook na instância
+No gerenciador da Evolution (`/manager`), abra a instância → **Eventos → Webhook**:
+- **Ativado:** sim
+- **URL:** `https://autowhats.automacaonow.com.br/webhook/evolution?token=<EVOLUTION_WEBHOOK_TOKEN>`
+- **Webhook por eventos:** desligado
+- **Webhook Base64:** desligado
+- **Eventos:** marque só `MESSAGES_UPSERT`
+
+Ou pela API:
+```bash
+curl -X POST "$EVOLUTION_API_URL/webhook/set/$EVOLUTION_INSTANCE" \
+  -H "apikey: $EVOLUTION_API_KEY" -H "Content-Type: application/json" \
+  -d '{"webhook":{"enabled":true,"url":"https://autowhats.automacaonow.com.br/webhook/evolution?token=SEU_TOKEN","byEvents":false,"base64":false,"events":["MESSAGES_UPSERT"]}}'
+```
+
+### 3. Teste
+De outro celular, mande "oi" para o número da instância. A Isis responde com a saudação e a resposta. Em `/api/diagnostico`, o bloco `whatsapp` mostra se as variáveis foram lidas; no log do app aparecem as linhas `WhatsApp: mensagem de ...`.
+
+### Como funciona
+- Cada número de cliente vira uma conversa. Se o cliente voltar depois de 24 horas sem falar, começa uma conversa nova, com saudação.
+- Mensagens repetidas são ignoradas, e as de um mesmo cliente são respondidas em ordem.
+- Grupos, status e mensagens enviadas pelo próprio número são ignorados.
+- Áudio, foto e figurinha recebem um aviso de que, por enquanto, a Isis só lê texto.
+- Pedidos fechados pelo WhatsApp baixam o estoque e aparecem nas métricas do painel, como no simulador.
+
 ## Comandos
 
 | Comando | O que faz |
@@ -110,6 +152,6 @@ Com GitHub, cada push pode fazer o deploy automático (ative em Deployments). Co
 | `npm run db:seed` | Cria as tabelas e carrega o catálogo de exemplo, se estiver vazio. |
 
 ## Próximos passos sugeridos
-- Ligar no WhatsApp real pela API oficial da Meta (WhatsApp Cloud API), reaproveitando o mesmo motor de IA.
+- Mostrar no painel as conversas reais do WhatsApp e permitir que um atendente humano assuma.
 - Login por usuário e vários lojistas no mesmo servidor.
 - Sincronização agendada com o banco do cliente, em vez de importação manual.
