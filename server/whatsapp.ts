@@ -60,7 +60,7 @@ export async function sendText(jid: string, text: string) {
 
 /** Blue checks and "digitando..." while Isis thinks. Failures here never block the reply. */
 async function markReadAndTyping(key: MessageKey) {
-  const number = destination(key.remoteJid);
+  const number = destination(customerJid(key));
   await evolution("/chat/markMessageAsRead", {
     readMessages: [{ remoteJid: key.remoteJid, fromMe: false, id: key.id }],
   }).catch((err) => console.warn("WhatsApp: não foi possível marcar como lida:", (err as Error).message));
@@ -87,9 +87,16 @@ async function findOrStartConversation(jid: string, profileName: string) {
 
 interface MessageKey {
   remoteJid: string;
+  // Newer WhatsApp versions address chats by an anonymous @lid; Evolution then sends the phone JID here.
+  remoteJidAlt?: string;
+  senderPn?: string;
   fromMe?: boolean;
   id: string;
 }
+
+/** The phone JID when WhatsApp gives one, so replies go to the number and not the @lid alias. */
+const customerJid = (key: MessageKey) =>
+  [key.remoteJidAlt, key.senderPn].find((j) => j?.endsWith("@s.whatsapp.net")) ?? key.remoteJid;
 
 interface UpsertData {
   key: MessageKey;
@@ -124,10 +131,11 @@ function enqueue(jid: string, job: () => Promise<void>) {
 
 async function handleMessage(data: UpsertData) {
   const { key } = data;
+  const jid = customerJid(key);
   // Evolution may deliver the same message more than once; answer each one only once.
   const fresh = await pool.query(
     "INSERT INTO whatsapp_messages (id, wa_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
-    [key.id, key.remoteJid],
+    [key.id, jid],
   );
   if (!fresh.rowCount) return;
 
@@ -136,14 +144,14 @@ async function handleMessage(data: UpsertData) {
     // Ignore protocol noise (reactions, edits, deletions); answer real media with a hint.
     const media = ["audioMessage", "imageMessage", "videoMessage", "stickerMessage", "documentMessage"];
     if (Object.keys(data.message ?? {}).some((k) => media.includes(k)))
-      await sendText(key.remoteJid, "Por enquanto eu só consigo ler mensagens de texto 😊 Pode me escrever o que você procura?");
+      await sendText(jid, "Por enquanto eu só consigo ler mensagens de texto 😊 Pode me escrever o que você procura?");
     return;
   }
 
   await markReadAndTyping(key);
-  const conv = await findOrStartConversation(key.remoteJid, data.pushName ?? "");
+  const conv = await findOrStartConversation(jid, data.pushName ?? "");
   const started = Date.now();
-  console.log(`WhatsApp: mensagem de ${key.remoteJid.split("@")[0].slice(0, -4)}**** (${text.length} caracteres)`);
+  console.log(`WhatsApp: mensagem de ${jid.split("@")[0].slice(0, -4)}**** (${text.length} caracteres)`);
 
   let replies: string[];
   try {
@@ -154,7 +162,7 @@ async function handleMessage(data: UpsertData) {
   }
   // The greeting only goes out when the customer starts a new conversation.
   if (conv.greeting) replies.unshift(conv.greeting);
-  for (const r of replies) await sendText(key.remoteJid, r);
+  for (const r of replies) await sendText(jid, r);
   console.log(`WhatsApp: ${replies.length} resposta(s) em ${Date.now() - started} ms`);
 }
 
@@ -175,6 +183,6 @@ export function processWebhook(body: any) {
     if (!data?.key?.id || data.key.fromMe) continue;
     // Only private chats: skip groups, status updates and channels.
     if (!jid || jid.endsWith("@g.us") || jid === "status@broadcast" || jid.endsWith("@newsletter")) continue;
-    enqueue(jid, () => handleMessage(data));
+    enqueue(customerJid(data.key), () => handleMessage(data));
   }
 }
