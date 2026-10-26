@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { pool } from "./db.js";
 import { chat, startConversation } from "./ai.js";
+import { getSettings } from "./catalog.js";
 
 /**
  * WhatsApp channel through Evolution API: the instance posts every new message
@@ -45,6 +46,7 @@ async function evolution(path: string, body: object) {
     const detail = await res.text();
     throw new Error(`Evolution API ${res.status} em ${path}: ${detail.slice(0, 500)}`);
   }
+  return res.json().catch(() => null);
 }
 
 /** Plain phone numbers for regular chats; the full JID for privacy (@lid) contacts. */
@@ -54,7 +56,10 @@ export async function sendText(jid: string, text: string) {
   const number = destination(jid);
   for (let i = 0; i < text.length; i += 4000) {
     const chunk = text.slice(i, i + 4000);
-    await evolution("/message/sendText", config().v1 ? { number, textMessage: { text: chunk } } : { number, text: chunk });
+    const sent = await evolution("/message/sendText", config().v1 ? { number, textMessage: { text: chunk } } : { number, text: chunk });
+    // Remember our own messages, so their echo on the webhook is not mistaken for the shopkeeper typing.
+    if (sent?.key?.id)
+      await pool.query("INSERT INTO whatsapp_messages (id, wa_id) VALUES ($1, $2) ON CONFLICT DO NOTHING", [sent.key.id, jid]);
   }
 }
 
@@ -129,6 +134,46 @@ function enqueue(jid: string, job: () => Promise<void>) {
   });
 }
 
+/** Brazilian numbers compared by area code + last 8 digits, so "+55", the extra 9 and formatting don't matter. */
+function phoneKey(value: string) {
+  let digits = value.split("@")[0].replace(/\D/g, "");
+  if (digits.length >= 12 && digits.startsWith("55")) digits = digits.slice(2);
+  return digits.length >= 10 ? digits.slice(0, 2) + digits.slice(-8) : digits;
+}
+
+function isIgnored(jid: string, ignoredNumbers: string) {
+  const key = phoneKey(jid);
+  return ignoredNumbers
+    .split(/[\n,;]+/)
+    .map(phoneKey)
+    .some((n) => n.length >= 8 && n === key);
+}
+
+async function pausedUntil(jid: string): Promise<Date | null> {
+  const { rows } = await pool.query("SELECT until FROM whatsapp_pauses WHERE wa_id = $1 AND until > now()", [jid]);
+  return rows[0]?.until ?? null;
+}
+
+/** A message sent from the store's phone that Isis did not send: the shopkeeper took over the chat. */
+async function handleOwnMessage(data: UpsertData) {
+  const jid = customerJid(data.key);
+  // The echo can beat the sendText response that records the id; give it a moment.
+  await new Promise((r) => setTimeout(r, 1500));
+  const fresh = await pool.query(
+    "INSERT INTO whatsapp_messages (id, wa_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+    [data.key.id, jid],
+  );
+  if (!fresh.rowCount) return; // one of Isis's own replies
+  const minutes = (await getSettings()).humanPauseMinutes;
+  if (!minutes) return;
+  await pool.query(
+    `INSERT INTO whatsapp_pauses (wa_id, until) VALUES ($1, now() + make_interval(mins => $2))
+     ON CONFLICT (wa_id) DO UPDATE SET until = EXCLUDED.until`,
+    [jid, minutes],
+  );
+  console.log(`WhatsApp: lojista respondeu ${jid.split("@")[0].slice(0, -4)}****, Isis pausada por ${minutes} min nessa conversa.`);
+}
+
 async function handleMessage(data: UpsertData) {
   const { key } = data;
   const jid = customerJid(key);
@@ -138,6 +183,16 @@ async function handleMessage(data: UpsertData) {
     [key.id, jid],
   );
   if (!fresh.rowCount) return;
+
+  const masked = `${jid.split("@")[0].slice(0, -4)}****`;
+  if (isIgnored(jid, (await getSettings()).ignoredNumbers)) {
+    console.log(`WhatsApp: ${masked} está na lista de números ignorados.`);
+    return;
+  }
+  if (await pausedUntil(jid)) {
+    console.log(`WhatsApp: conversa com ${masked} em atendimento humano, Isis não respondeu.`);
+    return;
+  }
 
   const text = messageText(data.message)?.trim();
   if (!text) {
@@ -151,7 +206,7 @@ async function handleMessage(data: UpsertData) {
   await markReadAndTyping(key);
   const conv = await findOrStartConversation(jid, data.pushName ?? "");
   const started = Date.now();
-  console.log(`WhatsApp: mensagem de ${jid.split("@")[0].slice(0, -4)}**** (${text.length} caracteres)`);
+  console.log(`WhatsApp: mensagem de ${masked} (${text.length} caracteres)`);
 
   let replies: string[];
   try {
@@ -180,9 +235,10 @@ export function processWebhook(body: any) {
   const items: UpsertData[] = Array.isArray(body.data?.messages) ? body.data.messages : [body.data];
   for (const data of items) {
     const jid = data?.key?.remoteJid ?? "";
-    if (!data?.key?.id || data.key.fromMe) continue;
+    if (!data?.key?.id) continue;
     // Only private chats: skip groups, status updates and channels.
     if (!jid || jid.endsWith("@g.us") || jid === "status@broadcast" || jid.endsWith("@newsletter")) continue;
-    enqueue(customerJid(data.key), () => handleMessage(data));
+    // Same queue for both directions: the echo of a reply Isis is still sending waits until it is recorded.
+    enqueue(customerJid(data.key), () => (data.key.fromMe ? handleOwnMessage(data) : handleMessage(data)));
   }
 }

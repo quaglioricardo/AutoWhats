@@ -152,6 +152,32 @@ export default function DashboardMetrics({ settings, onSettingsSaved, activity }
             Saudação inicial no WhatsApp (use {"{nome}"} e {"{loja}"} para inserir os nomes)
             <textarea className="field" rows={3} value={form.greeting} onChange={(e) => set("greeting", e.target.value)} />
           </label>
+          <label>
+            Pausa após atendimento humano (minutos)
+            <input
+              className="field"
+              type="number"
+              min={0}
+              step="1"
+              value={form.humanPauseMinutes}
+              onChange={(e) => set("humanPauseMinutes", Number(e.target.value))}
+            />
+            <small className="hint">
+              Quando você responde um cliente pelo celular da loja, a {form.assistantName} fica quieta nessa conversa por esse
+              tempo. Use 0 para desligar.
+            </small>
+          </label>
+          <label>
+            Números que a {form.assistantName} não responde
+            <textarea
+              className="field"
+              rows={3}
+              placeholder={"Um por linha, ex.: 11 98765-4321"}
+              value={form.ignoredNumbers}
+              onChange={(e) => set("ignoredNumbers", e.target.value)}
+            />
+            <small className="hint">Família, fornecedores, equipe. Essas conversas ficam só com você.</small>
+          </label>
         </div>
         {status && <div className="notice">{status}</div>}
         <div className="modal-actions">

@@ -31,6 +31,10 @@ export interface StoreSettings {
   greeting: string;
   deliveryFee: number;
   deliveryInfo: string;
+  /** WhatsApp numbers the assistant never answers, one per line. */
+  ignoredNumbers: string;
+  /** How long the assistant stays quiet in a chat after the shopkeeper replies by hand. */
+  humanPauseMinutes: number;
 }
 
 export const DEFAULT_SETTINGS: StoreSettings = {
@@ -43,6 +47,8 @@ export const DEFAULT_SETTINGS: StoreSettings = {
     "Olá! Eu sou a {nome}, atendente virtual da {loja} 😊 Posso consultar preços, tamanhos e estoque para você. O que está procurando hoje?",
   deliveryFee: 15,
   deliveryInfo: "Entrega em até 2 dias úteis para a cidade de São Paulo.",
+  ignoredNumbers: "",
+  humanPauseMinutes: 60,
 };
 
 export class ValidationError extends Error {}
@@ -202,6 +208,8 @@ export async function updateSettings(patch: Partial<StoreSettings>): Promise<Sto
   if (!["amigavel", "profissional", "descontraido"].includes(next.tone))
     throw new ValidationError("Tom de voz inválido.");
   next.deliveryFee = Number(next.deliveryFee) || 0;
+  next.humanPauseMinutes = Math.max(0, Math.trunc(Number(next.humanPauseMinutes) || 0));
+  next.ignoredNumbers = String(next.ignoredNumbers ?? "");
   next.assistantName = String(next.assistantName).trim() || DEFAULT_SETTINGS.assistantName;
   await pool.query(
     `INSERT INTO settings (id, data) VALUES (1, $1)

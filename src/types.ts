@@ -28,6 +28,10 @@ export interface StoreSettings {
   greeting: string;
   deliveryFee: number;
   deliveryInfo: string;
+  /** WhatsApp numbers the assistant never answers, one per line. */
+  ignoredNumbers: string;
+  /** How long the assistant stays quiet in a chat after the shopkeeper replies by hand. */
+  humanPauseMinutes: number;
 }
 
 export interface Metrics {

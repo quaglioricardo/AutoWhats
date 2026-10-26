@@ -141,6 +141,13 @@ De outro celular, mande "oi" para o número da instância. A Isis responde com a
 - Áudio, foto e figurinha recebem um aviso de que, por enquanto, a Isis só lê texto.
 - Pedidos fechados pelo WhatsApp baixam o estoque e aparecem nas métricas do painel, como no simulador.
 
+## Atendimento humano e números ignorados
+
+Em **Painel da Isis & Métricas** há duas opções para o uso no dia a dia:
+
+- **Pausa após atendimento humano:** quando o lojista responde um cliente pelo próprio celular da loja, a Isis fica quieta naquela conversa pelo tempo configurado (padrão 60 minutos) e depois volta sozinha. Cada nova resposta do lojista renova a pausa. Use 0 para desligar.
+- **Números que a Isis não responde:** um por linha, em qualquer formato (`11 98765-4321`, `+55 11 98765-4321`...). Bom para família, equipe e fornecedores.
+
 ## Comandos
 
 | Comando | O que faz |
