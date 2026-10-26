@@ -161,8 +161,12 @@ async function handleMessage(data: UpsertData) {
 /** Entry point for the webhook. Returns right away; replies are sent in the background. */
 export function processWebhook(body: any) {
   const event = String(body?.event ?? "").toLowerCase().replace("_", ".");
+  console.log(`WhatsApp: webhook recebido (evento ${body?.event ?? "?"}, instância ${body?.instance ?? "?"})`);
   if (event !== "messages.upsert") return;
-  if (body.instance && body.instance !== config().instance) return;
+  if (body.instance && body.instance !== config().instance) {
+    console.warn(`WhatsApp: ignorado, a instância "${body.instance}" não é a configurada ("${config().instance}").`);
+    return;
+  }
 
   // v2 sends one message in `data`; some setups batch them in `data.messages`.
   const items: UpsertData[] = Array.isArray(body.data?.messages) ? body.data.messages : [body.data];
