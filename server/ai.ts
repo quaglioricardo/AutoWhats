@@ -253,8 +253,11 @@ export async function chat(conversationId: string, text: string): Promise<string
       max_tokens: 16000,
       output_config: { effort: EFFORT },
       // Re-runs the request on Anthropic's recommended model if a safety classifier declines it.
-      betas: ["server-side-fallback-2026-07-01"],
+      betas: ["server-side-fallback-2026-07-01", "thinking-binding-controls-2026-08-01"],
       fallbacks: "default",
+      // The system prompt carries the live catalog, so it changes whenever stock or settings change.
+      // Thinking blocks from earlier turns are bound to the old prompt; drop them instead of failing.
+      thinking: { type: "adaptive", block_binding: { prefix_mismatch_behavior: "drop_block" } },
       cache_control: { type: "ephemeral" },
       system,
       tools: TOOLS,
