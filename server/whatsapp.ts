@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import Anthropic from "@anthropic-ai/sdk";
 import { pool } from "./db.js";
 import { chat, startConversation } from "./ai.js";
 import { getSettings } from "./catalog.js";
@@ -52,10 +53,30 @@ async function evolution(path: string, body: object) {
 /** Plain phone numbers for regular chats; the full JID for privacy (@lid) contacts. */
 const destination = (jid: string) => (jid.endsWith("@s.whatsapp.net") ? jid.split("@")[0] : jid);
 
+// Texts Isis sent recently. The echo of an API send does not always carry the id the send returned,
+// so the text is a second way to recognize it and not mistake it for the shopkeeper.
+const recentlySent = new Map<string, number>();
+const SENT_MEMORY_MS = 10 * 60 * 1000;
+
+function rememberSent(text: string) {
+  const now = Date.now();
+  for (const [t, at] of recentlySent) if (now - at > SENT_MEMORY_MS) recentlySent.delete(t);
+  recentlySent.set(text.trim(), now);
+}
+
+const sentByIsis = (text: string) => {
+  const at = recentlySent.get(text.trim());
+  return at !== undefined && Date.now() - at <= SENT_MEMORY_MS;
+};
+
+// The shopkeeper types this in a chat to hand it back to Isis right away.
+const RESUME_COMMAND = "#isis";
+
 export async function sendText(jid: string, text: string) {
   const number = destination(jid);
   for (let i = 0; i < text.length; i += 4000) {
     const chunk = text.slice(i, i + 4000);
+    rememberSent(chunk);
     const sent = await evolution("/message/sendText", config().v1 ? { number, textMessage: { text: chunk } } : { number, text: chunk });
     // Remember our own messages, so their echo on the webhook is not mistaken for the shopkeeper typing.
     if (sent?.key?.id)
@@ -75,7 +96,8 @@ async function markReadAndTyping(key: MessageKey) {
   ).catch((err) => console.warn("WhatsApp: não foi possível mostrar 'digitando':", (err as Error).message));
 }
 
-async function findOrStartConversation(jid: string, profileName: string) {
+async function findOrStartConversation(jid: string, profileName: string, forceNew = false) {
+  if (forceNew) return startWhatsappConversation(jid, profileName);
   const { rows } = await pool.query(
     `SELECT c.id FROM conversations c
      WHERE c.channel = 'whatsapp' AND c.whatsapp_id = $1
@@ -85,6 +107,10 @@ async function findOrStartConversation(jid: string, profileName: string) {
     [jid, CONVERSATION_IDLE_HOURS],
   );
   if (rows[0]) return { id: rows[0].id as string, greeting: null };
+  return startWhatsappConversation(jid, profileName);
+}
+
+async function startWhatsappConversation(jid: string, profileName: string) {
   const conv = await startConversation(profileName || "Cliente");
   await pool.query("UPDATE conversations SET channel = 'whatsapp', whatsapp_id = $2 WHERE id = $1", [conv.id, jid]);
   return { id: conv.id as string, greeting: conv.greeting as string };
@@ -164,6 +190,14 @@ async function handleOwnMessage(data: UpsertData) {
     [data.key.id, jid],
   );
   if (!fresh.rowCount) return; // one of Isis's own replies
+  const text = messageText(data.message)?.trim() ?? "";
+  if (text && sentByIsis(text)) return;
+  const masked = `${jid.split("@")[0].slice(0, -4)}****`;
+  if (text.toLowerCase() === RESUME_COMMAND) {
+    await pool.query("DELETE FROM whatsapp_pauses WHERE wa_id = $1", [jid]);
+    console.log(`WhatsApp: lojista devolveu a conversa com ${masked} para a Isis.`);
+    return;
+  }
   const minutes = (await getSettings()).humanPauseMinutes;
   if (!minutes) return;
   await pool.query(
@@ -171,7 +205,9 @@ async function handleOwnMessage(data: UpsertData) {
      ON CONFLICT (wa_id) DO UPDATE SET until = EXCLUDED.until`,
     [jid, minutes],
   );
-  console.log(`WhatsApp: lojista respondeu ${jid.split("@")[0].slice(0, -4)}****, Isis pausada por ${minutes} min nessa conversa.`);
+  console.log(
+    `WhatsApp: lojista respondeu ${masked} pelo celular, Isis pausada por ${minutes} min nessa conversa (envie ${RESUME_COMMAND} na conversa para liberar).`,
+  );
 }
 
 async function handleMessage(data: UpsertData) {
@@ -214,6 +250,17 @@ async function handleMessage(data: UpsertData) {
   } catch (err) {
     console.error("WhatsApp: falha ao gerar resposta:", err);
     replies = ["Desculpe, tive um problema para consultar o estoque agora. Pode tentar de novo em instantes?"];
+    // A request the API rejects (400) fails the same way on every message while the old history is replayed,
+    // so the customer gets a fresh conversation instead of the same error forever.
+    if (err instanceof Anthropic.BadRequestError) {
+      console.warn(`WhatsApp: histórico da conversa com ${masked} foi recusado pela IA, começando uma conversa nova.`);
+      try {
+        const fresh = await findOrStartConversation(jid, data.pushName ?? "", true);
+        replies = await chat(fresh.id, text.slice(0, 2000));
+      } catch (retryErr) {
+        console.error("WhatsApp: falha também na conversa nova:", retryErr);
+      }
+    }
   }
   // The greeting only goes out when the customer starts a new conversation.
   if (conv.greeting) replies.unshift(conv.greeting);

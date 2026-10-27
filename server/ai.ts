@@ -237,7 +237,10 @@ export async function chat(conversationId: string, text: string): Promise<string
   const system = buildSystemPrompt(settings, products, conv.rows[0].greeting);
 
   // History is append-only: earlier turns are replayed exactly as the API returned them.
-  const messages: BetaMessageParam[] = turns.rows.map((r) => ({ role: r.role, content: r.content }));
+  // Empty assistant turns (saved by older versions) are rejected by the API, so they are skipped.
+  const messages: BetaMessageParam[] = turns.rows
+    .filter((r) => !(Array.isArray(r.content) && r.content.length === 0))
+    .map((r) => ({ role: r.role, content: r.content }));
   const userContent: BetaContentBlockParam[] = [{ type: "text", text }];
   messages.push({ role: "user", content: userContent });
   await saveTurn(conversationId, "user", userContent);
@@ -263,6 +266,8 @@ export async function chat(conversationId: string, text: string): Promise<string
       break;
     }
 
+    // After a tool result the model may end without saying anything more; an empty turn can't be replayed.
+    if (response.content.length === 0) break;
     messages.push({ role: "assistant", content: response.content as BetaContentBlockParam[] });
     await saveTurn(conversationId, "assistant", response.content);
 
